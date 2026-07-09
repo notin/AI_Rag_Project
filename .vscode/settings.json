@@ -1,0 +1,9 @@
+{
+  "jestrunner.rootPath": "llm-platform",
+  "jestrunner.configPath": "jest.config.js",
+  "jestrunner.enableESM": true,
+  "jestrunner.debugOptions": {
+    "cwd": "${workspaceFolder}/llm-platform",
+    "runtimeArgs": ["--experimental-vm-modules"]
+  }
+}

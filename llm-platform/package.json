@@ -1,0 +1,39 @@
+{
+  "name": "llm-platform",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:watch": "jest scripts/smoke.test.ts --watch",
+    "test:smoke": "jest scripts/smoke.test.ts",
+    "lint": "turbo run lint",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "db:generate": "pnpm --filter @app/db db:generate",
+    "db:migrate": "pnpm --filter @app/db db:migrate",
+    "db:push": "pnpm --filter @app/db db:push",
+    "ingest:seed": "tsx scripts/ingest-seed.ts",
+    "search": "tsx scripts/search.ts"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.11",
+    "turbo": "^2.1.0",
+    "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "@app/db": "workspace:^",
+    "@app/llm-client": "workspace:^",
+    "dotenv": "^17.4.2",
+    "tsx": "^4.23.0"
+  }
+}

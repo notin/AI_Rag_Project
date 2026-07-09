@@ -1,0 +1,38 @@
+# Minimal gateway config — just enough to boot in Stage 0.
+# Stage 1 extends this with a fallback chain and caching.
+#
+# App code NEVER names a provider model directly — it uses these aliases
+# (chat-main / chat-cheap / embed). Swapping the underlying model is a
+# one-line change here, invisible to every service.
+
+model_list:
+  - model_name: chat-main
+    litellm_params:
+      model: openrouter/deepseek/deepseek-chat
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: chat-cheap
+    litellm_params:
+      model: openrouter/deepseek/deepseek-chat
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: embed
+    litellm_params:
+      # Embeddings stay on OpenAI — DeepSeek/OpenRouter don't offer a 1536-dim model
+      # that matches the hard-coded dimension check in @app/llm-client.
+      model: openai/text-embedding-3-small
+      api_key: os.environ/OPENAI_API_KEY
+
+router_settings:
+  fallbacks:
+    - {"chat-main": ["chat-cheap"]}
+  num_retries: 0
+
+litellm_settings:
+  # silently drop params a given provider doesn't support, so one client
+  # shape works across providers
+  drop_params: true
+  cache: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

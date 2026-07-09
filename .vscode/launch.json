@@ -1,0 +1,27 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Jest: current file",
+      "cwd": "${workspaceFolder}/llm-platform",
+      "program": "${workspaceFolder}/llm-platform/node_modules/jest/bin/jest.js",
+      "args": ["--runInBand", "${file}"],
+      "runtimeArgs": ["--experimental-vm-modules"],
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Jest: smoke test",
+      "cwd": "${workspaceFolder}/llm-platform",
+      "program": "${workspaceFolder}/llm-platform/node_modules/jest/bin/jest.js",
+      "args": ["--runInBand", "scripts/smoke.test.ts"],
+      "runtimeArgs": ["--experimental-vm-modules"],
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen"
+    }
+  ]
+}
