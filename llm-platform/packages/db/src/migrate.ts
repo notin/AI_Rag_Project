@@ -1,10 +1,17 @@
 // ─── Migration runner ───────────────────────────────────────────────────────
-// Run with: pnpm tsx src/migrate.ts  (or via root `pnpm db:migrate`)
+// Run with: pnpm db:migrate  (from llm-platform root)
 // Applies all SQL files in the ./drizzle folder in order.
 
-import 'dotenv/config';
-import { migrate } from 'drizzle-orm/postgres-js/migrator';
-import { db, closeDb } from './client.js';
+import { config } from 'dotenv';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+// Load env before importing the DB client (getEnv runs at module init).
+const __dirname = dirname(fileURLToPath(import.meta.url));
+config({ path: resolve(__dirname, '../../../.env') });
+
+const { migrate } = await import('drizzle-orm/postgres-js/migrator');
+const { db, closeDb } = await import('./client.js');
 
 async function main() {
   console.log('Running migrations...');

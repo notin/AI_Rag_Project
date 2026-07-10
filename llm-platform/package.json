@@ -18,6 +18,7 @@
     "infra:up": "docker compose up -d",
     "infra:down": "docker compose down",
     "db:generate": "pnpm --filter @app/db db:generate",
+    "db:enable-vector": "pnpm --filter @app/db db:enable-vector",
     "db:migrate": "pnpm --filter @app/db db:migrate",
     "db:push": "pnpm --filter @app/db db:push",
     "ingest:seed": "tsx scripts/ingest-seed.ts",

@@ -5,11 +5,23 @@ import { getEnv } from '@app/shared';
 
 const env = getEnv();
 
+const isSupabase = env.DATABASE_URL.includes('supabase.com');
+
 /**
  * Raw postgres.js connection — used by Drizzle and for migrations.
- * Max 10 connections; adjust if the worker pool needs more.
+ *
+ * Pool / pooler settings:
+ *   - prepare: false — required by Supabase's PgBouncer (transaction mode)
+ *   - ssl: 'require' — only when DATABASE_URL points at Supabase
+ *   - max: 5 — keep the pool small (Supabase free tier is connection-limited)
  */
-const sql = postgres(env.DATABASE_URL, { max: 10 });
+const sql = postgres(env.DATABASE_URL, {
+  max: 5,
+  prepare: false,
+  idle_timeout: 20,
+  connect_timeout: 10,
+  ...(isSupabase ? { ssl: 'require' as const } : {}),
+});
 
 /**
  * Drizzle ORM instance — the single entry-point for all DB operations.

@@ -7,16 +7,37 @@ Multi-service LLM platform. See `PLAN.md` for the full staged build plan.
 ## Quickstart (Stage 0)
 
 ```bash
-cp .env.example .env      # then fill in OPENAI_API_KEY
+cp .env.example .env      # then fill in keys + DATABASE_URL
 pnpm install
-docker compose up -d      # postgres+pgvector, redis, litellm
 pnpm build                # builds packages/shared
+```
+
+### Database: Supabase or local Docker
+
+**Supabase** — set `DATABASE_URL` to your pooler URI (port `6543`) in `.env`, then:
+
+```bash
+pnpm db:enable-vector     # CREATE EXTENSION vector (once per project)
+pnpm db:migrate
+```
+
+**Local Docker** — use the Option B `DATABASE_URL` in `.env.example`, then:
+
+```bash
+docker compose up -d      # postgres+pgvector, redis, litellm
+pnpm db:migrate
+```
+
+Redis (and LiteLLM if `LLM_TRANSPORT=gateway`) still come from Docker:
+
+```bash
+docker compose up -d redis   # or full stack: docker compose up -d
 ```
 
 Verify infra is healthy:
 
 ```bash
-docker compose ps         # all three should be (healthy)
+docker compose ps         # started services should be (healthy)
 curl http://localhost:4000/health/liveliness   # litellm -> {"status":"..."}
 ```
 
