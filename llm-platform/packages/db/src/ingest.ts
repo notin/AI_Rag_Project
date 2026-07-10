@@ -18,6 +18,64 @@ const log = logger.child({ module: 'ingest' });
 /** How many texts to embed in a single API call. */
 const EMBED_BATCH_SIZE = 20;
 
+/** How many embedding batches to send in flight at once (per file). */
+const EMBED_CONCURRENCY = 4;
+
+/** How many files to ingest in parallel. Keep <= the DB pool size. */
+const FILE_CONCURRENCY = 4;
+
+/**
+ * Tracks embedding API calls across the whole ingest run so we can show a
+ * live "how many calls are happening right now" readout at info level.
+ */
+const embedProgress = {
+  inFlight: 0,
+  completed: 0,
+  reset() {
+    this.inFlight = 0;
+    this.completed = 0;
+  },
+  start() {
+    this.inFlight++;
+    log.info(
+      { inFlight: this.inFlight, completed: this.completed },
+      `⟳ embedding call started — ${this.inFlight} in flight`,
+    );
+  },
+  finish() {
+    this.inFlight--;
+    this.completed++;
+    log.info(
+      { inFlight: this.inFlight, completed: this.completed },
+      `✓ embedding call done — ${this.completed} completed, ${this.inFlight} in flight`,
+    );
+  },
+};
+
+/**
+ * Run an async mapper over items with a bounded number in flight at once.
+ * Results are returned in the original input order.
+ */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const current = nextIndex++;
+      if (current >= items.length) break;
+      results[current] = await fn(items[current]!, current);
+    }
+  });
+
+  await Promise.all(workers);
+  return results;
+}
+
 export interface IngestResult {
   filePath: string;
   title: string;
@@ -56,18 +114,29 @@ export async function ingestFile(filePath: string): Promise<IngestResult> {
     'Chunked',
   );
 
-  // ── Embed in batches ────────────────────────────────────────────────
-  const allEmbeddings: number[][] = [];
+  // ── Embed in batches (bounded concurrency) ──────────────────────────
+  // Embedding is network-bound, so we send several batches in flight at
+  // once rather than awaiting them one by one.
+  const batches: string[][] = [];
   for (let i = 0; i < chunkResults.length; i += EMBED_BATCH_SIZE) {
-    const batch = chunkResults.slice(i, i + EMBED_BATCH_SIZE);
-    const batchTexts = batch.map((c) => c.text);
-    const embeddings = await embed(batchTexts);
-    allEmbeddings.push(...embeddings);
-    log.debug(
-      { batch: Math.floor(i / EMBED_BATCH_SIZE) + 1 },
-      'Embedded batch',
-    );
+    batches.push(chunkResults.slice(i, i + EMBED_BATCH_SIZE).map((c) => c.text));
   }
+
+  const batchEmbeddings = await mapWithConcurrency(
+    batches,
+    EMBED_CONCURRENCY,
+    async (batchTexts) => {
+      embedProgress.start();
+      try {
+        return await embed(batchTexts);
+      } finally {
+        embedProgress.finish();
+      }
+    },
+  );
+
+  // Flatten back into chunk order (mapWithConcurrency preserves order).
+  const allEmbeddings: number[][] = batchEmbeddings.flat();
 
   // ── Upsert document + chunks in a transaction ───────────────────────
   // If the document already exists (same URI, different hash), delete old
@@ -132,12 +201,14 @@ export async function ingestDirectory(
     .sort();
 
   log.info({ dir: absoluteDir, files: files.length }, 'Ingesting directory');
+  embedProgress.reset();
 
-  const results: IngestResult[] = [];
-  for (const file of files) {
-    const result = await ingestFile(file);
-    results.push(result);
-  }
+  // Files are independent (distinct documents), so ingest several in
+  // parallel. FILE_CONCURRENCY is kept at/below the DB pool size so we
+  // don't exhaust Supabase's connection limit.
+  const results = await mapWithConcurrency(files, FILE_CONCURRENCY, (file) =>
+    ingestFile(file),
+  );
 
   const ingested = results.filter((r) => !r.skipped).length;
   const skipped = results.filter((r) => r.skipped).length;
