@@ -11,6 +11,15 @@ import {
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
+// ─── Custom tsvector type ────────────────────────────────────────────────────
+// Postgres full-text search type. Populated by a STORED generated column
+// (see the `tsv` column below) so it stays in sync with `text` automatically.
+const tsvector = customType<{ data: string }>({
+  dataType() {
+    return 'tsvector';
+  },
+});
+
 // ─── Custom pgvector type ───────────────────────────────────────────────────
 // Drizzle has built-in vector support but we define it explicitly
 // to ensure full control over the dimension and operator class.
@@ -79,6 +88,12 @@ export const chunks = pgTable(
     ordinal: integer('ordinal').notNull(),
     text: text('text').notNull(),
     embedding: vector('embedding', { dimensions: EMBEDDING_DIMENSIONS }).notNull(),
+    // Full-text search vector, generated (STORED) from `text`. This is the
+    // keyword half of Stage 3 hybrid retrieval. Because it's a generated
+    // column, Postgres keeps it in sync automatically — no re-ingest needed.
+    tsv: tsvector('tsv').generatedAlwaysAs(
+      (): any => sql`to_tsvector('english', ${chunks.text})`,
+    ),
     metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
   },
   (table) => [
@@ -88,6 +103,8 @@ export const chunks = pgTable(
       'hnsw',
       table.embedding.op('vector_cosine_ops'),
     ),
+    // GIN index over the tsvector — the keyword-search accelerator.
+    index('chunks_tsv_gin_idx').using('gin', table.tsv),
     // Composite index for efficient lookups by document.
     index('chunks_document_id_idx').on(table.documentId),
   ],

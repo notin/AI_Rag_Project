@@ -53,3 +53,36 @@ export async function semanticSearch(
 
   return results;
 }
+
+/**
+ * Full-text keyword search — the "BM25-ish" half of hybrid retrieval.
+ *
+ * Uses Postgres full-text search: `tsv @@ plainto_tsquery('english', $query)`
+ * matches chunks containing the query terms, ranked by `ts_rank`. This is the
+ * arm that catches exact tokens (codes, SKUs, rare proper nouns) that semantic
+ * embeddings can smear together.
+ *
+ * `similarity` here is the normalized ts_rank (not comparable to the cosine
+ * similarity from semanticSearch — the two are fused by *rank*, not score).
+ */
+export async function keywordSearch(
+  query: string,
+  k: number = 50,
+): Promise<SearchResult[]> {
+  const results = await db
+    .select({
+      chunkId: chunks.id,
+      documentId: chunks.documentId,
+      documentTitle: documents.title,
+      text: chunks.text,
+      ordinal: chunks.ordinal,
+      similarity: sql<number>`ts_rank(${chunks.tsv}, plainto_tsquery('english', ${query}))`,
+    })
+    .from(chunks)
+    .innerJoin(documents, sql`${chunks.documentId} = ${documents.id}`)
+    .where(sql`${chunks.tsv} @@ plainto_tsquery('english', ${query})`)
+    .orderBy(sql`ts_rank(${chunks.tsv}, plainto_tsquery('english', ${query})) DESC`)
+    .limit(k);
+
+  return results;
+}

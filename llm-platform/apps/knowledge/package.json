@@ -1,0 +1,28 @@
+{
+  "name": "@app/knowledge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/server.ts",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "rerank:ab": "tsx scripts/rerank-ab.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@app/db": "workspace:*",
+    "@app/llm-client": "workspace:*",
+    "@app/shared": "workspace:*",
+    "@hono/node-server": "^1.13.0",
+    "hono": "^4.6.0",
+    "ai": "latest",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "tsx": "^4.23.0",
+    "typescript": "^5.6.0",
+    "dotenv": "^17.4.2"
+  }
+}

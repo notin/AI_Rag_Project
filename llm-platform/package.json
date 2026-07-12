@@ -22,7 +22,9 @@
     "db:migrate": "pnpm --filter @app/db db:migrate",
     "db:push": "pnpm --filter @app/db db:push",
     "ingest:seed": "tsx scripts/ingest-seed.ts",
-    "search": "tsx scripts/search.ts"
+    "search": "tsx scripts/search.ts",
+    "ask": "tsx scripts/ask.ts",
+    "knowledge": "pnpm --filter @app/knowledge dev"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

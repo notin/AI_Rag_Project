@@ -12,21 +12,32 @@ pnpm install
 pnpm build                # builds packages/shared
 ```
 
-### Database: Supabase or local Docker
+### Database: Supabase (pgvector)
 
-**Supabase** — set `DATABASE_URL` to your pooler URI (port `6543`) in `.env`, then:
+The database is hosted on **Supabase**. Set `DATABASE_URL` to your pooler URI
+(port `6543`, transaction mode) in `.env`, then:
 
 ```bash
 pnpm db:enable-vector     # CREATE EXTENSION vector (once per project)
 pnpm db:migrate
 ```
 
-**Local Docker** — use the Option B `DATABASE_URL` in `.env.example`, then:
+The DB client (`packages/db/src/client.ts`) auto-detects Supabase and applies
+pooler-safe settings (`prepare: false`, `ssl: require`, small pool).
+
+<details>
+<summary>Alternative: local Docker Postgres</summary>
+
+Instead of Supabase you can run Postgres+pgvector locally. Use the Option B
+`DATABASE_URL` in `.env.example`, then:
 
 ```bash
 docker compose up -d      # postgres+pgvector, redis, litellm
 pnpm db:migrate
 ```
+</details>
+
+### Other infra (Redis / LiteLLM)
 
 Redis (and LiteLLM if `LLM_TRANSPORT=gateway`) still come from Docker:
 

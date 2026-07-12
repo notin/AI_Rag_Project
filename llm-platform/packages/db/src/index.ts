@@ -11,4 +11,4 @@ export {
 } from './schema.js';
 export { chunkText, type ChunkOptions, type ChunkResult } from './chunk.js';
 export { ingestFile, ingestDirectory, type IngestResult } from './ingest.js';
-export { semanticSearch, type SearchResult } from './search.js';
+export { semanticSearch, keywordSearch, type SearchResult } from './search.js';
