@@ -15,7 +15,7 @@ import postgres from 'postgres';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: resolve(__dirname, '../../../.env') });
 
-const databaseUrl = process.env.DATABASE_URL;
+const databaseUrl: string = process.env.DATABASE_URL ?? '';
 if (!databaseUrl) {
   console.error('DATABASE_URL is not set. Copy .env.example to .env and fill it in.');
   process.exit(1);
