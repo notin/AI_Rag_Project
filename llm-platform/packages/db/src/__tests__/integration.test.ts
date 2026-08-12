@@ -18,8 +18,7 @@ describe('ingest → search integration', () => {
   // Use a single well-known file as the test fixture
   const fixtureFile = path.join(FIXTURE_DIR, 'mewtwo-and-mew.md');
 
-  beforeAll(async () => {
-    // Clean up any prior test data for this fixture
+  async function removeFixtureDocuments() {
     const existing = await db
       .select({ id: documents.id })
       .from(documents)
@@ -29,9 +28,16 @@ describe('ingest → search integration', () => {
       await db.delete(chunks).where(eq(chunks.documentId, doc.id));
       await db.delete(documents).where(eq(documents.id, doc.id));
     }
-  });
+  }
+
+  beforeAll(removeFixtureDocuments);
 
   afterAll(async () => {
+    // Also clean up on the way out. `sourceUri` is an absolute path, so when
+    // the corpus was ingested from a different checkout location this test's
+    // ingest adds a *duplicate* document rather than matching the existing one
+    // — and leaving it behind pollutes retrieval for everything downstream.
+    await removeFixtureDocuments();
     await closeDb();
   });
 

@@ -1,7 +1,10 @@
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import * as schema from './schema.js';
+import * as coreSchema from './schema.js';
+import * as graphSchema from './graph/schema.js';
 import { getEnv } from '@app/shared';
+
+const schema = { ...coreSchema, ...graphSchema };
 
 const env = getEnv();
 

@@ -15,6 +15,13 @@
       "when": 1784041200000,
       "tag": "0001_add_tsv_fulltext",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786477850397,
+      "tag": "0002_sturdy_zodiak",
+      "breakpoints": true
     }
   ]
 }

@@ -24,7 +24,9 @@
     "ingest:seed": "tsx scripts/ingest-seed.ts",
     "search": "tsx scripts/search.ts",
     "ask": "tsx scripts/ask.ts",
-    "knowledge": "pnpm --filter @app/knowledge dev"
+    "knowledge": "pnpm --filter @app/knowledge dev",
+    "graph:build": "tsx scripts/build-graph.ts",
+    "graph:query": "tsx scripts/graph-query.ts"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
