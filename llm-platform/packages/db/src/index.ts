@@ -12,3 +12,7 @@ export {
 export { chunkText, type ChunkOptions, type ChunkResult } from './chunk.js';
 export { ingestFile, ingestDirectory, type IngestResult } from './ingest.js';
 export { semanticSearch, keywordSearch, type SearchResult } from './search.js';
+export { mapWithConcurrency } from './concurrency.js';
+
+// Stage 2.5 — knowledge graph layer
+export * from './graph/index.js';

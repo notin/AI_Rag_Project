@@ -7,46 +7,11 @@ import {
   jsonb,
   index,
   uniqueIndex,
-  customType,
 } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
-
-// ─── Custom tsvector type ────────────────────────────────────────────────────
-// Postgres full-text search type. Populated by a STORED generated column
-// (see the `tsv` column below) so it stays in sync with `text` automatically.
-const tsvector = customType<{ data: string }>({
-  dataType() {
-    return 'tsvector';
-  },
-});
-
-// ─── Custom pgvector type ───────────────────────────────────────────────────
-// Drizzle has built-in vector support but we define it explicitly
-// to ensure full control over the dimension and operator class.
-
-const vector = customType<{
-  data: number[];
-  dpiverName: 'vector';
-  config: { dimensions: number };
-}>({
-  dataType(config) {
-    return `vector(${config?.dimensions ?? 1536})`;
-  },
-  toDriver(value: number[]): string {
-    return `[${value.join(',')}]`;
-  },
-  fromDriver(value: unknown): number[] {
-    // postgres.js returns vector as a string like "[0.1,0.2,...]"
-    if (typeof value === 'string') {
-      return value
-        .replace(/^\[/, '')
-        .replace(/\]$/, '')
-        .split(',')
-        .map(Number);
-    }
-    return value as number[];
-  },
-});
+import { sql, type SQL } from 'drizzle-orm';
+// NOTE: extensionless — drizzle-kit's schema loader requires these files as CJS
+// and does not rewrite a `.js` specifier back to the `.ts` source.
+import { vector, tsvector } from './column-types';
 
 // ─── Dimension constant ─────────────────────────────────────────────────────
 // Must match the embedding model output. text-embedding-3-small = 1536.
@@ -88,11 +53,11 @@ export const chunks = pgTable(
     ordinal: integer('ordinal').notNull(),
     text: text('text').notNull(),
     embedding: vector('embedding', { dimensions: EMBEDDING_DIMENSIONS }).notNull(),
-    // Full-text search vector, generated (STORED) from `text`. This is the
-    // keyword half of Stage 3 hybrid retrieval. Because it's a generated
-    // column, Postgres keeps it in sync automatically — no re-ingest needed.
+    // Keyword half of Stage 3's hybrid retrieval. Generated (not trigger-
+    // maintained) so Postgres keeps it in sync with `text` and it can never
+    // drift.
     tsv: tsvector('tsv').generatedAlwaysAs(
-      (): any => sql`to_tsvector('english', ${chunks.text})`,
+      (): SQL => sql`to_tsvector('english', ${chunks.text})`,
     ),
     metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
   },
@@ -103,7 +68,7 @@ export const chunks = pgTable(
       'hnsw',
       table.embedding.op('vector_cosine_ops'),
     ),
-    // GIN index over the tsvector — the keyword-search accelerator.
+    // GIN over the full-text vector — the keyword arm of hybrid retrieval.
     index('chunks_tsv_gin_idx').using('gin', table.tsv),
     // Composite index for efficient lookups by document.
     index('chunks_document_id_idx').on(table.documentId),

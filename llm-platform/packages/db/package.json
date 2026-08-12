@@ -27,7 +27,8 @@
     "@app/shared": "workspace:*",
     "@app/llm-client": "workspace:*",
     "drizzle-orm": "^0.44.0",
-    "postgres": "^3.4.0"
+    "postgres": "^3.4.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.7.0",

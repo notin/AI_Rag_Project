@@ -7,7 +7,8 @@ config({ path: resolve(__dirname, '../../.env') });
 
 export default defineConfig({
   out: './drizzle',
-  schema: './src/schema.ts',
+  // Both files, or drizzle-kit silently emits nothing for the graph tables.
+  schema: ['./src/schema.ts', './src/graph/schema.ts'],
   dialect: 'postgresql',
   dbCredentials: {
     url: process.env.DATABASE_URL!,
