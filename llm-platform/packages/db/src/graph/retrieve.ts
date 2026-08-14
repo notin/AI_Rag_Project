@@ -48,8 +48,22 @@ export interface GraphRetrieveResult {
 export interface GraphRetrieveOptions extends ExpandOptions {
   /** How many vector hits to seed the traversal from. */
   seedK?: number;
+  /**
+   * Seed chunks to traverse from, when the caller has already run the vector
+   * arm. A hybrid pipeline embeds the query for its own semantic arm anyway, so
+   * letting it hand those hits over avoids a second embed + vector scan per
+   * request. Omit to have this function run the search itself.
+   */
+  seeds?: SearchResult[];
+  /**
+   * Skip the fact and matchup queries. For callers that only want the expanded
+   * chunks — and for A/B runs that disable the fact block but keep the arm.
+   */
+  includeFacts?: boolean;
   /** Cap on the fact block. */
   maxFacts?: number;
+  /** Cap on how many entities feed the fact/matchup queries. */
+  maxFactEntities?: number;
   /** Cap on derived matchup lines. */
   maxMatchups?: number;
 }
@@ -60,7 +74,7 @@ export async function graphRetrieve(
 ): Promise<GraphRetrieveResult> {
   const seedK = opts.seedK ?? 10;
 
-  const seeds = await semanticSearch(query, seedK);
+  const seeds = opts.seeds ?? (await semanticSearch(query, seedK));
   const seedIds = seeds.map((s) => s.chunkId);
 
   const expansion = await graphExpand(seedIds, opts);
@@ -73,28 +87,44 @@ export async function graphRetrieve(
     ? await hydrate(newChunkIds, expansion.chunks)
     : [];
 
-  // Facts draw on the uncapped seed set plus the walk. The expansion caps are
-  // tuned to keep hub nodes from flooding the candidate pool, which is the
-  // wrong trade for facts: dropping `Fairy` from a Dragon question costs you
-  // the one edge that answers it.
-  const factEntityIds = [
-    ...new Set([
-      ...expansion.seedEntities.map((e) => e.entityId),
-      ...expansion.entities.map((e) => e.entityId),
-    ]),
-  ];
+  // Facts used to take the uncapped seed set ∪ the walk (~125 ids). That
+  // dumped the type chart into the prompt and made typeMatchups bind every
+  // Pokémon the seed chunks happened to mention. Keep the subject of the
+  // question — Pokémon, their types, their regions — and leave moves/groups
+  // out. Type-chart *edges* still appear via graphFacts; they just aren't
+  // discovered by walking from every type node at once.
+  const { factEntityIds, pokemonEntityIds } = pickFactEntities(
+    expansion.seedEntities,
+    expansion.entities,
+    {
+      maxEntities: opts.maxFactEntities ?? 24,
+      maxPokemon: opts.maxMatchups ?? 8,
+    },
+  );
 
-  const [facts, allMatchups] = await Promise.all([
-    graphFacts(factEntityIds, {
-      maxFacts: opts.maxFacts ?? 40,
-      requireBothEndpoints: true,
-    }),
-    typeMatchups(factEntityIds),
-  ]);
+  if (opts.includeFacts === false) {
+    return {
+      seeds,
+      seedEntities: expansion.seedEntities,
+      reachedEntities: expansion.entities,
+      expanded,
+      facts: [],
+      matchups: [],
+    };
+  }
+
+  // Sequential on purpose: the Supabase transaction pooler charges a TLS
+  // handshake after idle_timeout, and two cold connects in Promise.all is
+  // what surfaced as CONNECT_TIMEOUT on typeMatchups.
+  const facts = await graphFacts(factEntityIds, {
+    maxFacts: opts.maxFacts ?? 40,
+    requireBothEndpoints: true,
+  });
+  const allMatchups = await typeMatchups(pokemonEntityIds);
 
   // typeMatchups returns alphabetically; re-sort onto the relevance order so
   // the cap keeps the Pokémon the question is actually about.
-  const position = new Map(factEntityIds.map((id, i) => [id, i]));
+  const position = new Map(pokemonEntityIds.map((id, i) => [id, i]));
   const matchups = allMatchups
     .sort(
       (a, b) =>
@@ -111,6 +141,52 @@ export async function graphRetrieve(
     facts,
     matchups,
   };
+}
+
+const FACT_TYPES = new Set(['pokemon', 'type', 'region']);
+
+function typeRank(type: string): number {
+  if (type === 'pokemon') return 0;
+  if (type === 'type') return 1;
+  if (type === 'region') return 2;
+  return 3;
+}
+
+/**
+ * Relevance-ordered entity ids for the fact and matchup queries.
+ *
+ * Seed entities come first (most-mentioned, Pokémon preferred), then the
+ * walk. Moves, abilities and groups are dropped — they generate facts the
+ * question almost never needs and they were the bulk of the 125-id bind.
+ */
+function pickFactEntities(
+  seeds: ReachedEntity[],
+  reached: ReachedEntity[],
+  caps: { maxEntities: number; maxPokemon: number },
+): { factEntityIds: string[]; pokemonEntityIds: string[] } {
+  const ordered = [...seeds].sort(
+    (a, b) => typeRank(a.type) - typeRank(b.type) || b.mentions - a.mentions,
+  );
+  const seen = new Set<string>();
+  const factEntityIds: string[] = [];
+  const pokemonEntityIds: string[] = [];
+
+  for (const e of [...ordered, ...reached]) {
+    if (!FACT_TYPES.has(e.type) || seen.has(e.entityId)) continue;
+    seen.add(e.entityId);
+    if (factEntityIds.length < caps.maxEntities) factEntityIds.push(e.entityId);
+    if (e.type === 'pokemon' && pokemonEntityIds.length < caps.maxPokemon) {
+      pokemonEntityIds.push(e.entityId);
+    }
+    if (
+      factEntityIds.length >= caps.maxEntities &&
+      pokemonEntityIds.length >= caps.maxPokemon
+    ) {
+      break;
+    }
+  }
+
+  return { factEntityIds, pokemonEntityIds };
 }
 
 async function hydrate(

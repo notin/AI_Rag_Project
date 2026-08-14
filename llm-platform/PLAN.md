@@ -537,27 +537,28 @@ service**: typed contract, prompt versioning, re-ask loop.
 **Depends on:** Stages 2 and 2.5.
 
 **Tasks:**
-- [ ] **Hybrid retrieve — three arms:** semantic (`<=>`), keyword
+- [x] **Hybrid retrieve — three arms:** semantic (`<=>`), keyword
       (`tsv @@ plainto_tsquery`), and **graph** (`graphExpand` seeded with the top ~10
       semantic hits). Fuse all three with Reciprocal Rank Fusion → top ~50 candidates.
       Give each arm a weight in the RRF sum and put the graph arm's weight behind an
       env flag, so Stage 6 can A/B it against a two-arm baseline.
-- [ ] **Rerank:** Cohere Rerank over the 50 → keep top ~5. Put it behind a
+- [x] **Rerank:** Cohere Rerank over the 50 → keep top ~5. Put it behind a
       `Reranker` interface (swap to Bedrock later).
-- [ ] **Assemble + generate:** build a context block with source tags; prompt the
+- [x] **Assemble + generate:** build a context block with source tags; prompt the
       model (via gateway) to answer *only* from context and cite chunk ids. When the
       query resolved to at least one entity, prepend a `graphFacts` block above the
       passages — structured relationships first, prose second. Those facts carry chunk
       ids too, so they cite exactly like passages and the grounding rule needs no
       special case.
-- [ ] **Typed contract + re-ask:** `generateObject` with a Zod schema
+- [x] **Typed contract + re-ask:** `generateObject` with a Zod schema
       `{ answer, citations: chunkId[] }`; if it cites a chunk not in context or
       returns invalid shape, **re-ask once** (this is the service-level retry,
       distinct from the gateway's provider retry).
-- [ ] Store prompts as versioned files (`prompts/answer@v1.md`); log the version used.
-- [ ] Hono route `POST /ask`; Zod-validate the request.
+- [x] Store prompts as versioned files (`prompts/answer@v1.md`); log the version used.
+      Now at `answer@v2`, which documents the `c…`/`f…`/`m…` label kinds.
+- [x] Hono route `POST /ask`; Zod-validate the request.
 
-**Key files:** `apps/knowledge/src/{retrieve,rerank,answer,server}.ts`,
+**Key files:** `apps/knowledge/src/{retrieve,rerank,answer,pipeline,server}.ts`,
 `apps/knowledge/prompts/`.
 
 **Done when:** `POST /ask {"q":"..."}` returns an answer plus citation chunk ids
@@ -565,6 +566,20 @@ that actually exist in the retrieved set. Ask something *not* in the corpus → 
 declines rather than hallucinating (grounding works). Verify each arm earns its keep:
 a query using an exact code/SKU that semantic-alone missed now hits via the keyword
 arm, and a multi-hop question that semantic-alone missed now hits via the graph arm.
+
+> **Measured** — "What is Mewtwo weak to?", run against the same corpus with
+> `GRAPH_ARM_ENABLED` flipped:
+>
+> - **Two-arm baseline:** *"weak only to Bug-type moves, due to a Generation I
+>   programming bug"* — cited one passage. It found a paragraph about the Gen-I
+>   Psychic/Ghost bug and answered from the era that paragraph describes.
+> - **Three-arm + facts:** *"weak to Bug, Dark, and Ghost-type moves, taking 2x
+>   damage"* — cited a derived matchup. 15 chunks added by the graph arm, 40 facts,
+>   8 matchups, 57 seed entities.
+>
+> The graph arm is what closes it: the correct answer is arithmetic over the type
+> chart, which no passage in the corpus states outright. Out-of-corpus questions
+> still decline with zero citations, so the fact block didn't weaken grounding.
 
 ---
 

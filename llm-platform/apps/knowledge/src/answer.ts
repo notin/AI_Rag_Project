@@ -2,7 +2,8 @@
 //
 // This is the "LLM service" core: a typed contract with a bounded re-ask loop.
 //
-//   1. Assemble the reranked chunks into a labelled context block (c1, c2, …).
+//   1. Assemble the context into labelled, citable sources: graph facts (f1,
+//      f2, …), derived matchups (m1, …), then the reranked passages (c1, …).
 //   2. Ask the model (via the gateway) for a STRUCTURED answer using a Zod
 //      schema — `generateObject` guarantees the shape or throws.
 //   3. Validate the *content*: every cited label must exist in the context.
@@ -10,6 +11,12 @@
 //      correction note. This service-level retry is distinct from the gateway's
 //      provider-level retry (that handles transport/provider failures; this
 //      handles "the model didn't follow the grounding contract").
+//
+// Structure goes above prose deliberately: directional relationships ("X is
+// super effective against Y") are exactly what a model flips when it has to
+// infer them from a paragraph. Facts and matchups carry chunk ids of their own,
+// so they cite through the same label check as passages — the grounding rule
+// needs no special case for them.
 //
 // Prompts are stored as versioned files (prompts/answer@vN.md) and the version
 // used is returned + logged, so prompt changes are auditable.
@@ -20,12 +27,13 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { extract } from '@app/llm-client';
 import { logger } from '@app/shared';
+import { renderFact, renderMatchup, type GraphFact, type Matchup } from '@app/db';
 import type { RetrievedChunk } from './retrieve.js';
 
 const log = logger.child({ module: 'answer' });
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const PROMPT_VERSION = 'answer@v1';
+const PROMPT_VERSION = 'answer@v2';
 const systemPrompt = readFileSync(
   resolve(__dirname, `../prompts/${PROMPT_VERSION}.md`),
   'utf-8',
@@ -36,13 +44,23 @@ const AnswerSchema = z.object({
   answer: z.string().describe('The grounded answer, or the exact decline sentence.'),
   citations: z
     .array(z.string())
-    .describe('Source labels actually used, e.g. ["c1","c3"]. Empty if declining.'),
+    .describe(
+      'Source labels actually used, e.g. ["c1","f2","m1"]. Empty if declining.',
+    ),
 });
+
+export type CitationKind = 'passage' | 'fact' | 'matchup';
 
 export interface Citation {
   label: string;
-  chunkId: string;
+  kind: CitationKind;
+  /** Human-readable origin: a document title, or the graph for derived lines. */
   documentTitle: string;
+  /**
+   * Chunks backing this citation. Empty only for ground-truth type-chart facts,
+   * which the corpus never asserted because they were seeded.
+   */
+  chunkIds: string[];
 }
 
 export interface AnswerResult {
@@ -52,15 +70,80 @@ export interface AnswerResult {
   reAsked: boolean;
 }
 
-/** Build the labelled context block and a label→chunk lookup. */
-function assembleContext(chunks: RetrievedChunk[]) {
-  const byLabel = new Map<string, RetrievedChunk>();
-  const blocks = chunks.map((c, i) => {
+export interface GraphContext {
+  facts?: GraphFact[];
+  matchups?: Matchup[];
+}
+
+/**
+ * Build the labelled context block and a label→source lookup.
+ *
+ * Facts and matchups are re-rendered without their `[chunk:…]` provenance
+ * suffix: the bracketed label at the head of each line is the citable handle
+ * here, and two competing bracket forms in one line invites the model to cite
+ * the wrong one.
+ */
+function assembleContext(chunks: RetrievedChunk[], graph: GraphContext) {
+  const byLabel = new Map<string, Citation>();
+  const sections: string[] = [];
+
+  const facts = graph.facts ?? [];
+  if (facts.length > 0) {
+    const lines = facts.map((f, i) => {
+      const label = `f${i + 1}`;
+      byLabel.set(label, {
+        label,
+        kind: 'fact',
+        documentTitle:
+          f.origin === 'seed'
+            ? 'knowledge graph (type chart)'
+            : 'knowledge graph',
+        chunkIds: f.chunkIds,
+      });
+      const line = renderFact({
+        sourceName: f.sourceName,
+        relation: f.relation,
+        targetName: f.targetName,
+        properties: f.properties,
+      });
+      return `[${label}] ${line}`;
+    });
+    sections.push(`Knowledge-graph facts:\n\n${lines.join('\n')}`);
+  }
+
+  const matchups = graph.matchups ?? [];
+  if (matchups.length > 0) {
+    const lines = matchups.map((m, i) => {
+      const label = `m${i + 1}`;
+      byLabel.set(label, {
+        label,
+        kind: 'matchup',
+        documentTitle: 'knowledge graph (derived matchup)',
+        chunkIds: m.chunkIds,
+      });
+      const line = renderMatchup(m.pokemonName, m.typing, m.buckets);
+      return `[${label}] ${line}`;
+    });
+    sections.push(
+      `Derived type matchups (computed across the full type chart — ` +
+        `authoritative, and preferred over reasoning from individual facts above):` +
+        `\n\n${lines.join('\n')}`,
+    );
+  }
+
+  const passages = chunks.map((c, i) => {
     const label = `c${i + 1}`;
-    byLabel.set(label, c);
+    byLabel.set(label, {
+      label,
+      kind: 'passage',
+      documentTitle: c.documentTitle,
+      chunkIds: [c.chunkId],
+    });
     return `[${label}] (source: ${c.documentTitle})\n${c.text}`;
   });
-  return { context: blocks.join('\n\n'), byLabel };
+  sections.push(`Passages:\n\n${passages.join('\n\n')}`);
+
+  return { context: sections.join('\n\n'), byLabel };
 }
 
 function buildPrompt(query: string, context: string, correction?: string): string {
@@ -81,8 +164,9 @@ function buildPrompt(query: string, context: string, correction?: string): strin
 export async function generateAnswer(
   query: string,
   chunks: RetrievedChunk[],
+  graph: GraphContext = {},
 ): Promise<AnswerResult> {
-  const { context, byLabel } = assembleContext(chunks);
+  const { context, byLabel } = assembleContext(chunks, graph);
   const validLabels = new Set(byLabel.keys());
 
   type Answer = z.infer<typeof AnswerSchema>;
@@ -115,13 +199,17 @@ export async function generateAnswer(
   // surfacing bogus ids to the caller.
   const citations: Citation[] = object.citations
     .filter((label: string) => validLabels.has(label))
-    .map((label: string) => {
-      const chunk = byLabel.get(label)!;
-      return { label, chunkId: chunk.chunkId, documentTitle: chunk.documentTitle };
-    });
+    .map((label: string) => byLabel.get(label)!);
 
   log.info(
-    { promptVersion: PROMPT_VERSION, reAsked, citationCount: citations.length },
+    {
+      promptVersion: PROMPT_VERSION,
+      reAsked,
+      citationCount: citations.length,
+      // Which kinds of source the answer leaned on — the signal for whether the
+      // graph block is earning its place in the context window.
+      citedKinds: citations.map((c) => c.kind),
+    },
     'Answer generated',
   );
 

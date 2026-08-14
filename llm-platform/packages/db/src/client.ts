@@ -17,12 +17,16 @@ const isSupabase = env.DATABASE_URL.includes('supabase.com');
  *   - prepare: false — required by Supabase's PgBouncer (transaction mode)
  *   - ssl: 'require' — only when DATABASE_URL points at Supabase
  *   - max: 5 — keep the pool small (Supabase free tier is connection-limited)
+ *   - connect_timeout: 30 — `idle_timeout` reaps the pool after 60s, so a
+ *     request arriving after a lull pays a cold TLS handshake to the pooler.
+ *     10s was not enough for that and surfaced as CONNECT_TIMEOUT on whichever
+ *     query happened to reconnect first.
  */
 const sql = postgres(env.DATABASE_URL, {
   max: 5,
   prepare: false,
-  idle_timeout: 20,
-  connect_timeout: 10,
+  idle_timeout: 60,
+  connect_timeout: 30,
   ...(isSupabase ? { ssl: 'require' as const } : {}),
 });
 

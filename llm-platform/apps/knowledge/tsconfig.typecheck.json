@@ -1,0 +1,11 @@
+// Typecheck covers scripts/ as well as src/. The build config can't: it emits
+// with rootDir "src", so the helper scripts would land outside dist. Without
+// this, a signature change in src/ breaks scripts/ silently.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src", "scripts"]
+}

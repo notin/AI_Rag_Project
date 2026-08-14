@@ -17,9 +17,12 @@ const TOP_N = 5;
 function printRanking(label: string, chunks: RetrievedChunk[]) {
   console.log(`\n─── ${label} (top ${chunks.length}) ───`);
   chunks.forEach((c, i) => {
-    const score = c.similarity.toFixed(4);
+    // Graph-only chunks carry no similarity — no arm scored them on content.
+    const score = c.similarity !== undefined ? c.similarity.toFixed(4) : '  —  ';
     const preview = c.text.slice(0, 70).replace(/\s+/g, ' ');
-    console.log(`  ${i + 1}. [${score}] ${c.documentTitle}  ·  ${preview}…`);
+    console.log(
+      `  ${i + 1}. [${score}] (${c.sources.join('+')}) ${c.documentTitle}  ·  ${preview}…`,
+    );
   });
 }
 
@@ -29,8 +32,14 @@ async function main() {
   console.log('╚══════════════════════════════════════════╝');
   console.log(`\nQuery: "${query}"`);
 
-  const candidates = await hybridRetrieve(query, { limit: 50 });
+  const { chunks: candidates, facts, matchups, stats } = await hybridRetrieve(query, {
+    limit: 50,
+  });
   console.log(`\nHybrid retrieval returned ${candidates.length} candidates.`);
+  console.log(
+    `  arms: semantic=${stats.semantic} keyword=${stats.keyword} graph=${stats.graph}` +
+      `  ·  facts=${facts.length} matchups=${matchups.length}`,
+  );
 
   // A — passthrough (trusts RRF order)
   const passthrough = new PassthroughReranker();
@@ -58,11 +67,14 @@ async function main() {
 
   // Finally, actually answer the question using the Cohere-reranked context.
   console.log('\n─── Answer (using Cohere top-5) ───\n');
-  const result = await generateAnswer(query, bTop);
+  const result = await generateAnswer(query, bTop, { facts, matchups });
   console.log(result.answer);
   console.log('\nCitations:');
   for (const c of result.citations) {
-    console.log(`  [${c.label}] ${c.documentTitle}  (chunk ${c.chunkId})`);
+    const chunks = c.chunkIds.length
+      ? `chunk ${c.chunkIds.map((id) => id.slice(0, 8)).join(', ')}`
+      : 'ground truth';
+    console.log(`  [${c.label}] ${c.kind}  ${c.documentTitle}  (${chunks})`);
   }
   console.log(`\npromptVersion=${result.promptVersion}  reAsked=${result.reAsked}`);
 

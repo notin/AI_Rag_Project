@@ -17,11 +17,9 @@ import {
   uniqueIndex,
   primaryKey,
 } from 'drizzle-orm/pg-core';
-// NOTE: extensionless — drizzle-kit's schema loader requires these files as CJS
-// and does not rewrite a `.js` specifier back to the `.ts` source.
-import { vector } from '../column-types';
-import { chunks, EMBEDDING_DIMENSIONS } from '../schema';
-import type { EntityType, Relation } from './vocab';
+import { vector } from '../column-types.js';
+import { chunks, EMBEDDING_DIMENSIONS } from '../schema.js';
+import type { EntityType, Relation } from './vocab.js';
 
 /** Where an edge came from. Seed edges are ground truth and outrank LLM edges. */
 export type EdgeOrigin = 'seed' | 'llm';

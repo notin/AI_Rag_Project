@@ -10,7 +10,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../client.js';
-import type { Relation } from './vocab.js';
+import { WALK_RELATIONS, type Relation } from './vocab.js';
 
 export interface ExpandOptions {
   /**
@@ -32,15 +32,38 @@ export interface ExpandOptions {
   maxNodesPerHop?: number;
   /** Ceiling on chunks returned. */
   maxChunks?: number;
+  /**
+   * How many seed-chunk entities the walk is allowed to start from.
+   *
+   * Seed chunks routinely mention 50–80 entities (every type, move and region
+   * that appears in the passage). Starting the recursive CTE from all of them
+   * is what makes 2 hops feel unbounded: the output caps then throw most of
+   * that work away. Pokémon first, then types, then everyone else.
+   */
+  maxWalkSeeds?: number;
+  /**
+   * How many reached entities a chunk must mention before the walk will return
+   * it. Applies to added chunks only — seed chunks are already justified by the
+   * vector arm.
+   *
+   * 1 (the default) means "shares anything", which stops discriminating as soon
+   * as the graph has hub nodes: a corpus whose chunks each mention ~15 entities,
+   * several of them hubs, puts almost every chunk one shared entity away from
+   * every other. Raising this to 2 asks for corroboration instead of a single
+   * incidental co-mention.
+   */
+  minSharedEntities?: number;
   /** Restrict the walk to these relations. Omit to traverse all of them. */
   relations?: Relation[];
 }
 
 const DEFAULTS = {
   maxHops: 2,
-  maxNodes: 60,
-  maxNodesPerHop: 20,
-  maxChunks: 25,
+  maxNodes: 32,
+  maxNodesPerHop: 12,
+  maxChunks: 20,
+  minSharedEntities: 1,
+  maxWalkSeeds: 12,
 } satisfies Required<Omit<ExpandOptions, 'relations'>>;
 
 export interface ReachedEntity {
@@ -68,11 +91,9 @@ export interface GraphExpansion {
   /**
    * EVERY entity the seed chunks mention, uncapped, most-mentioned first.
    *
-   * Deliberately not subject to `maxNodes`. The caps exist to stop hub nodes
-   * from dragging half the corpus into the candidate pool — but fact
-   * serialization has the opposite need: a `type` node is a hub precisely
-   * because the type chart hangs off it, and those are the facts worth putting
-   * in front of the model. Truncating here silently drops the good ones.
+   * Observability only. The walk starts from `maxWalkSeeds` of these
+   * (Pokémon first), and facts pick a further-capped subset. Dumping this
+   * whole list into graphFacts is what produced the 125-id binds.
    */
   seedEntities: ReachedEntity[];
   /** The ranked, capped walk — what the expansion arm is allowed to fan out from. */
@@ -94,6 +115,8 @@ export async function graphExpand(
   const maxNodes = opts.maxNodes ?? DEFAULTS.maxNodes;
   const maxNodesPerHop = opts.maxNodesPerHop ?? DEFAULTS.maxNodesPerHop;
   const maxChunks = opts.maxChunks ?? DEFAULTS.maxChunks;
+  const minShared = opts.minSharedEntities ?? DEFAULTS.minSharedEntities;
+  const maxWalkSeeds = opts.maxWalkSeeds ?? DEFAULTS.maxWalkSeeds;
 
   if (seedChunkIds.length === 0) {
     return { seedEntities: [], entities: [], chunks: [] };
@@ -101,10 +124,14 @@ export async function graphExpand(
 
   const seedParam = sql.param(seedChunkIds);
 
-  // Optional relation filter, applied inside the recursive term.
+  // Omit = walk relations (no type chart). Explicit [] = every relation.
+  const walkRelations =
+    opts.relations === undefined
+      ? [...WALK_RELATIONS]
+      : opts.relations;
   const relationFilter =
-    opts.relations && opts.relations.length > 0
-      ? sql`AND e.relation = ANY(${sql.param(opts.relations)}::text[])`
+    walkRelations.length > 0
+      ? sql`AND e.relation = ANY(${sql.param(walkRelations)}::text[])`
       : sql``;
 
   type EntityRow = {
@@ -131,10 +158,18 @@ export async function graphExpand(
   //            ties outright.
   const rows = await db.execute<EntityRow>(sql`
     WITH RECURSIVE seed AS (
-      SELECT ce.entity_id, count(*)::int AS mentions
-      FROM chunk_entities ce
-      WHERE ce.chunk_id = ANY(${seedParam}::uuid[])
-      GROUP BY ce.entity_id
+      SELECT entity_id, mentions FROM (
+        SELECT ce.entity_id, count(*)::int AS mentions
+        FROM chunk_entities ce
+        JOIN entities en ON en.id = ce.entity_id
+        WHERE ce.chunk_id = ANY(${seedParam}::uuid[])
+        GROUP BY ce.entity_id, en.type
+        ORDER BY (en.type = 'pokemon') DESC,
+                 (en.type = 'type') DESC,
+                 mentions DESC,
+                 ce.entity_id
+        LIMIT ${maxWalkSeeds}
+      ) top
     ),
     reachable AS (
       SELECT entity_id, 0 AS hops FROM seed
@@ -236,6 +271,8 @@ export async function graphExpand(
     FROM chunk_entities ce
     WHERE ce.entity_id = ANY(${sql.param(entityIds)}::uuid[])
     GROUP BY ce.chunk_id
+    HAVING count(*) >= ${minShared}
+        OR ce.chunk_id = ANY(${seedParam}::uuid[])
   `);
 
   const seedSet = new Set(seedChunkIds);

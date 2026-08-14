@@ -3,6 +3,7 @@
 // Usage: pnpm --filter @app/knowledge dev   (or `pnpm knowledge` from root)
 
 import './load-env.js';
+import './zod-jitless.js';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { z } from 'zod';

@@ -5,10 +5,12 @@
   "type": "module",
   "main": "./src/server.ts",
   "scripts": {
+    "build": "tsc -p tsconfig.json",
     "dev": "tsx watch src/server.ts",
-    "start": "tsx src/server.ts",
+    "dev:debug": "node --inspect-brk=9229 dist/server.js",
+    "start": "node dist/server.js",
     "rerank:ab": "tsx scripts/rerank-ab.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc -p tsconfig.typecheck.json"
   },
   "dependencies": {
     "@app/db": "workspace:*",

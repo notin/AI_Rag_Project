@@ -45,6 +45,26 @@ export const relationSchema = z.enum(RELATIONS);
 export type Relation = (typeof RELATIONS)[number];
 
 /**
+ * Relations the retrieval walk is allowed to follow.
+ *
+ * Type-chart edges are omitted on purpose. They form a near-complete graph
+ * over 18 types, so one hop from `Electric` reaches most of the chart and the
+ * next hop pulls in every Pokémon of those types. That is the right structure
+ * for *facts* and *derived matchups* — which read the chart directly — and the
+ * wrong structure for finding more passages.
+ */
+export const WALK_RELATIONS = [
+  'evolves_into',
+  'has_type',
+  'learns_move',
+  'has_ability',
+  'found_in',
+  'member_of',
+  'regional_variant_of',
+  'mega_evolves_into',
+] as const satisfies readonly Relation[];
+
+/**
  * Human-readable label for an edge traversed backwards. Rendering only —
  * no inverse row is ever written.
  */

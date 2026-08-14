@@ -25,6 +25,7 @@
     "search": "tsx scripts/search.ts",
     "ask": "tsx scripts/ask.ts",
     "knowledge": "pnpm --filter @app/knowledge dev",
+    "knowledge:debug": "node --inspect-brk=9229 apps/knowledge/dist/server.js",
     "graph:build": "tsx scripts/build-graph.ts",
     "graph:query": "tsx scripts/graph-query.ts"
   },

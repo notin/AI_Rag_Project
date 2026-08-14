@@ -6,6 +6,7 @@ import {
   isSeedOwned,
   INVERSE_LABEL,
   RELATIONS,
+  WALK_RELATIONS,
 } from '../vocab.js';
 
 describe('normalizeName', () => {
@@ -97,5 +98,17 @@ describe('INVERSE_LABEL', () => {
     for (const relation of RELATIONS) {
       expect(INVERSE_LABEL[relation]).toBeTruthy();
     }
+  });
+});
+
+describe('WALK_RELATIONS', () => {
+  it('is a subset of RELATIONS and excludes the type chart', () => {
+    const all = new Set<string>(RELATIONS);
+    for (const relation of WALK_RELATIONS) {
+      expect(all.has(relation)).toBe(true);
+    }
+    expect(WALK_RELATIONS).not.toContain('super_effective_against');
+    expect(WALK_RELATIONS).not.toContain('not_very_effective_against');
+    expect(WALK_RELATIONS).not.toContain('no_effect_on');
   });
 });

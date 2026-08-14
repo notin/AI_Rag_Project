@@ -3,6 +3,7 @@
 export {
   ENTITY_TYPES,
   RELATIONS,
+  WALK_RELATIONS,
   INVERSE_LABEL,
   RELATION_ENDPOINTS,
   entityTypeSchema,

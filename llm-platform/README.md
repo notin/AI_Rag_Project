@@ -9,8 +9,13 @@ Multi-service LLM platform. See `PLAN.md` for the full staged build plan.
 ```bash
 cp .env.example .env      # then fill in keys + DATABASE_URL
 pnpm install
-pnpm build                # builds packages/shared
+pnpm build                # compiles every package to dist/ with source maps
 ```
+
+Every workspace package is consumed as built JS (`dist/`), so `pnpm build` must
+have run before anything that imports `@app/db` — that includes `pnpm ask`,
+`pnpm search`, `pnpm graph:*` and `pnpm db:generate`. Keep `pnpm build --watch`
+running, or just rebuild when you switch branches.
 
 ### Database: Supabase (pgvector)
 
@@ -99,6 +104,76 @@ Type effectiveness is seeded from a hand-encoded chart rather than extracted, an
 extraction is *refused* for that family — see the Stage 2.5 implementation notes
 in `PLAN.md` for the measurement that forced that rule.
 
+## Knowledge service (Stage 3)
+
+`POST /ask` answers a question from the corpus with citations, over a
+retrieve → rerank → generate pipeline.
+
+```bash
+pnpm knowledge            # tsx watch on http://localhost:3001
+curl -s localhost:3001/ask -H 'content-type: application/json' \
+  -d '{"q":"What is Mewtwo weak to?"}'
+```
+
+Retrieval runs three arms and fuses their *rankings* with Reciprocal Rank Fusion,
+because cosine similarity, `ts_rank` and hop distance are not on a common scale:
+
+```
+RRF(doc) = Σ_arms  weight_arm / (60 + rank_in_arm)
+```
+
+The graph arm walks out from the top semantic hits, so it runs after them rather
+than in parallel. It hands those hits to `graphRetrieve` as seeds instead of
+letting it embed the query a second time.
+
+Generation puts structure above prose. Graph facts (`f1`, `f2`, …) and derived
+matchups (`m1`, …) are prepended to the passages (`c1`, …), and all three are
+citable through the same label check — a bogus label triggers one re-ask, and any
+still-invalid label is dropped rather than returned. The response reports what the
+graph contributed:
+
+```json
+"graph": { "expanded": 15, "facts": 40, "matchups": 8, "seedEntities": 57 }
+```
+
+Every arm is behind an env flag so it can be A/B'd (see `.env.example`):
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `GRAPH_ARM_ENABLED` | `true` | Master switch. `false` = two-arm baseline. |
+| `GRAPH_FACTS_ENABLED` | `true` | Fact/matchup prompt block, independent of the arm. |
+| `RRF_WEIGHT_{SEMANTIC,KEYWORD,GRAPH}` | `1` | Per-arm weight; `0` drops the arm from fusion. |
+| `GRAPH_SEED_K` / `GRAPH_MAX_HOPS` | `5` / `2` | Semantic hits that seed the walk, and walk depth. |
+| `GRAPH_MAX_WALK_SEEDS` | `12` | Entities the walk starts from (Pokémon first). |
+| `GRAPH_MAX_NODES` / `GRAPH_MAX_NODES_PER_HOP` | `32` / `12` | Walk output caps. |
+| `GRAPH_MIN_SHARED_ENTITIES` | `2` | Reached entities a chunk must mention to be returned. |
+
+Tune `GRAPH_MIN_SHARED_ENTITIES` against your own corpus. It is a corroboration
+bar on the graph arm, and the value that filters usefully scales with how many
+entities a chunk mentions — on a corpus averaging ~15 entities per chunk, a bar
+of 2 is met by everything and only ~8 begins to discriminate.
+
+Reranking falls back to a passthrough that trusts the RRF order when
+`COHERE_API_KEY` is unset, so the pipeline works without a rerank provider.
+`pnpm --filter @app/knowledge rerank:ab "…"` shows the cross-encoder reordering
+the same candidate set.
+
+## Debugging
+
+`pnpm knowledge` runs the fast tsx watch loop, but tsx serves the debugger
+whitespace-minified code on a single line, so IDE breakpoints cannot bind to it.
+Debug the compiled output instead:
+
+```bash
+pnpm build
+pnpm knowledge:debug      # node --inspect-brk=9229 apps/knowledge/dist/server.js
+```
+
+Breakpoints go in the `.ts` sources as usual and resolve through the emitted
+`.js.map`, including across package boundaries into `@app/db` and `@app/shared`.
+In IntelliJ or VS Code, point a standard **Node.js** run configuration at
+`apps/knowledge/dist/server.js` with the working directory set to `llm-platform`.
+
 ## Layout
 
 ```
@@ -115,5 +190,6 @@ apps/*               knowledge, worker, orchestrator (added in Stages 3–5)
 - `pnpm db:migrate` — apply SQL migrations from `packages/db/drizzle`
 - `pnpm ingest:seed` / `pnpm search "…"` — vector store (Stage 2)
 - `pnpm graph:build` / `pnpm graph:query "…"` — knowledge graph (Stage 2.5)
+- `pnpm knowledge` — the `POST /ask` service (Stage 3)
 - `pnpm build` / `pnpm typecheck` / `pnpm test` — turbo across the workspace
 - `pnpm --filter @app/db test:integration` — DB-backed tests (needs a live database)

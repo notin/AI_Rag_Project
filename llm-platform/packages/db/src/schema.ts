@@ -9,9 +9,7 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { sql, type SQL } from 'drizzle-orm';
-// NOTE: extensionless — drizzle-kit's schema loader requires these files as CJS
-// and does not rewrite a `.js` specifier back to the `.ts` source.
-import { vector, tsvector } from './column-types';
+import { vector, tsvector } from './column-types.js';
 
 // ─── Dimension constant ─────────────────────────────────────────────────────
 // Must match the embedding model output. text-embedding-3-small = 1536.

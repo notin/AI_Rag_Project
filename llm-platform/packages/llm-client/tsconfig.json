@@ -3,7 +3,10 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "declaration": false
+    // The ai-sdk return types are not nameable across package boundaries
+    // (TS2883/TS4058), so consumers read types from src instead — see exports below.
+    "declaration": false,
+    "declarationMap": false
   },
   "include": ["src"]
 }
