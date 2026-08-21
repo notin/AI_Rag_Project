@@ -239,11 +239,12 @@ unauthorized id exists.
 **Key files:** `openapi/assets@v1.yaml`, `packages/errors/src/{problem,errors,map,catalog}.ts`.
 
 **Done when:**
-- Spec linted (`@redocly/cli` or `swagger-cli`) with zero errors.
-- Vitest: mapper coverage for each domain error; unknown `Error` → 500 with
-  no `detail` from the stack; catalog codes are stable strings.
+- [x] Spec linted (`@redocly/cli` or `swagger-cli`) with zero errors.
+- [x] Vitest: mapper coverage for each domain error; unknown `Error` → 500 with
+      no `detail` from the stack; catalog codes are stable strings.
 - You can answer out loud: "why cursor not offset" and "what is
-  `application/problem+json`" while looking at these two files.
+  `application/problem+json`" while looking at `openapi/assets@v1.yaml` and
+  `packages/errors`.
 
 ---
 
@@ -323,14 +324,14 @@ split `getAsset` into five nanoservices. The table above is the grain.
 **Key files:** `packages/domain/src/*.ts`, `apps/assets-api/src/dynamodb/*.ts`.
 
 **Done when:**
-- Vitest (mocked store or DynamoDB Local): create → get with ETag → PUT with
-  stale If-Match → 412; PUT with current ETag → version bumps.
-- List with two pages: `nextCursor` round-trips; inserting an item on page 1
-  does not duplicate-or-skip the way offset would (write a test that
-  documents this).
-- `packages/domain` tests import nothing from `aws-lambda`.
-- POST harvest returns a job id and does not write a harvest row (the worker
-  does that in Stage 4).
+- [x] Vitest (mocked store or DynamoDB Local): create → get with ETag → PUT with
+      stale If-Match → 412; PUT with current ETag → version bumps.
+- [x] List with two pages: `nextCursor` round-trips; inserting an item on page 1
+      does not duplicate-or-skip the way offset would (write a test that
+      documents this).
+- [x] `packages/domain` tests import nothing from `aws-lambda`.
+- [x] POST harvest returns a job id and does not write a harvest row (the worker
+      does that in Stage 4).
 
 ---
 

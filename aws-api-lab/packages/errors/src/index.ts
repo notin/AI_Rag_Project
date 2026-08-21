@@ -10,4 +10,4 @@ export {
   ValidationError,
 } from "./errors.js";
 export { GENERIC_INTERNAL_DETAIL, toProblem } from "./map.js";
-export type { ProblemContext, ProblemDetail } from "./problem.js";
+export { RFC9457_FIELDS, type ProblemContext, type ProblemDetail } from "./problem.js";

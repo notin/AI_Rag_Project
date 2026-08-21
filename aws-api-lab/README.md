@@ -9,8 +9,8 @@ everything in Terraform. This lab is a REST API with problem+json errors
 (including API Gateway responses), cursor pagination and ETags on DynamoDB, and
 async harvests over a queue so the request path stays boring.
 
-Stage-by-stage build: see [PLAN.md](./PLAN.md). **Stage 0 is the current
-checkpoint** — workspace, name prefix, $20 budget alarm. No API yet.
+Stage-by-stage build: see [PLAN.md](./PLAN.md). **Stage 2 is the current
+checkpoint** — domain + DynamoDB ports, ETags, cursor pagination. Gateway is Stage 3.
 
 ---
 
@@ -80,6 +80,8 @@ From `aws-api-lab/`:
 ```powershell
 pnpm install
 pnpm build
+pnpm test
+pnpm lint:openapi
 
 terraform -chdir=terraform/envs/dev init
 terraform -chdir=terraform/envs/dev fmt
@@ -102,12 +104,12 @@ file and you will have to import or delete leftovers in the console.
 
 ---
 
-## Layout (Stage 0)
+## Layout (Stage 2)
 
 ```
 aws-api-lab/
-├─ PLAN.md
-├─ packages/errors    # stub — Stage 1 fills RFC 9457
-├─ packages/domain    # stub — Stage 2, no AWS types
-└─ terraform/envs/dev # prefix, budget, SNS
+├─ openapi/assets@v1.yaml
+├─ packages/errors          # problem+json mapper
+├─ packages/domain          # use cases; no aws-lambda / @aws-sdk
+└─ apps/assets-api          # thin handlers + DynamoDB adapter
 ```

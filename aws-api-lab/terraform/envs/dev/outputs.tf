@@ -26,3 +26,19 @@ output "budget_name" {
 output "alert_email" {
   value = var.alert_email
 }
+
+output "assets_table" {
+  value = aws_dynamodb_table.assets.name
+}
+
+output "harvests_table" {
+  value = aws_dynamodb_table.harvests.name
+}
+
+output "jobs_table" {
+  value = aws_dynamodb_table.jobs.name
+}
+
+output "idempotency_table" {
+  value = aws_dynamodb_table.idempotency.name
+}
