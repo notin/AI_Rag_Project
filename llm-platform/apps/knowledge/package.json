@@ -1,0 +1,30 @@
+{
+  "name": "@app/knowledge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/server.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/server.ts",
+    "dev:debug": "node --inspect-brk=9229 --enable-source-maps dist/server.js",
+    "start": "node dist/server.js",
+    "rerank:ab": "tsx scripts/rerank-ab.ts",
+    "typecheck": "tsc -p tsconfig.typecheck.json"
+  },
+  "dependencies": {
+    "@app/db": "workspace:*",
+    "@app/llm-client": "workspace:*",
+    "@app/shared": "workspace:*",
+    "@hono/node-server": "^1.13.0",
+    "hono": "^4.6.0",
+    "ai": "latest",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "tsx": "^4.23.0",
+    "typescript": "^5.6.0",
+    "dotenv": "^17.4.2"
+  }
+}
