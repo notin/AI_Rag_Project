@@ -1,0 +1,12 @@
+extends:
+  - recommended
+
+apis:
+  assets@v1:
+    root: openapi/assets@v1.yaml
+
+rules:
+  info-license: off
+  operation-4xx-response: error
+  operation-operationId: error
+  no-unused-components: warn

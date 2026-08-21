@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars only if you need to override defaults.
+# terraform.tfvars is gitignored.
+
+# aws_region       = "us-east-2"
+# aws_account_id   = "510724490747"
+# aws_profile      = "aws-api-lab"
+# alert_email      = "chadvansyoc11@gmail.com"
+# budget_limit_usd = 20
